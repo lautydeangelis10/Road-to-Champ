@@ -1,0 +1,1434 @@
+extends Control
+
+# ============================================================
+# PADDOCK - BETA
+# F1 Career / Race Strategy Simulator
+# Godot 4.x
+#
+# Un solo archivo para prototipar rápidamente.
+# Crear una escena Control, adjuntar este script y ejecutar.
+# ============================================================
+
+# ------------------------------------------------------------
+# DATA
+# ------------------------------------------------------------
+
+class Driver:
+	var name: String
+	var pace: int
+	var qualifying: int
+	var consistency: int
+	var wet_skill: int
+	var tire_management: int
+	var aggression: int
+	var racecraft: int
+	var reputation: int
+	var team: String
+
+	func _init(
+		n: String,
+		p: int,
+		q: int,
+		c: int,
+		w: int,
+		t: int,
+		a: int,
+		r: int,
+		team_name: String
+	):
+		name = n
+		pace = p
+		qualifying = q
+		consistency = c
+		wet_skill = w
+		tire_management = t
+		aggression = a
+		racecraft = r
+		reputation = 10
+		team = team_name
+
+
+class RaceState:
+	var driver: Driver
+	var position: int = 1
+	var lap_time: float = 90.0
+	var total_time: float = 0.0
+
+	var tire_type: String = "MEDIUM"
+	var tire_health: float = 100.0
+	var fuel: float = 100.0
+	var ers: float = 100.0
+
+	var front_wing: float = 100.0
+	var engine: float = 100.0
+
+	var strategy: String = "NORMAL"
+	var pitting: bool = false
+	var pit_laps_left: int = 0
+
+	var alive: bool = true
+	var dnf: bool = false
+
+	func _init(d: Driver):
+		driver = d
+
+
+# ------------------------------------------------------------
+# GAME STATE
+# ------------------------------------------------------------
+
+var drivers: Array[Driver] = []
+var race_states: Array[RaceState] = []
+
+var player: Driver
+var player_state: RaceState
+
+var total_laps := 35
+var current_lap := 0
+
+var race_running := false
+var race_finished := false
+
+var safety_car := false
+var virtual_safety_car := false
+var red_flag := false
+
+var rain_intensity: float = 0.0
+var track_wetness: float = 0.0
+var weather_forecast: float = 0.0
+
+var player_points := 0
+var player_money := 50000
+var player_reputation := 20
+
+var wins := 0
+var podiums := 0
+var career_races := 0
+
+var last_event := ""
+var radio_message := "Race start."
+
+var event_cooldown := 0
+
+var rng := RandomNumberGenerator.new()
+
+
+# ------------------------------------------------------------
+# UI
+# ------------------------------------------------------------
+
+var title_label: Label
+var lap_label: Label
+var position_label: Label
+var standings_label: Label
+var telemetry_label: Label
+var weather_label: Label
+var radio_label: Label
+var event_label: Label
+var championship_label: Label
+var log_label: RichTextLabel
+
+var push_button: Button
+var normal_button: Button
+var save_button: Button
+var attack_button: Button
+var defend_button: Button
+var pit_button: Button
+
+var start_button: Button
+var next_lap_button: Button
+var restart_button: Button
+
+
+# ------------------------------------------------------------
+# READY
+# ------------------------------------------------------------
+
+func _ready():
+	rng.randomize()
+	build_world()
+	build_ui()
+	start_new_race()
+
+
+# ------------------------------------------------------------
+# WORLD
+# ------------------------------------------------------------
+
+func build_world():
+
+	drivers.clear()
+
+	drivers.append(Driver.new(
+		"TU PILOTO",
+		72, 68, 75, 60, 68, 72, 70,
+		"Rosso Corse"
+	))
+
+	drivers.append(Driver.new(
+		"Mats Versteppen",
+		94, 95, 88, 82, 86, 96, 95,
+		"Energy Bull"
+	))
+
+	drivers.append(Driver.new(
+		"Lando Morris",
+		88, 91, 82, 75, 78, 60, 84,
+		"Papaya Racing"
+	))
+
+	drivers.append(Driver.new(
+		"Fernando Alonzo",
+		86, 83, 95, 92, 91, 72, 97,
+		"Aston Green"
+	))
+
+	drivers.append(Driver.new(
+		"Charles Leclerc-ish",
+		89, 97, 78, 74, 75, 74, 88,
+		"Rosso Corse"
+	))
+
+	drivers.append(Driver.new(
+		"George Russelton",
+		86, 88, 84, 76, 79, 55, 83,
+		"Silver Arrow"
+	))
+
+	drivers.append(Driver.new(
+		"Oscar Piastroni",
+		87, 90, 86, 78, 82, 62, 87,
+		"Papaya Racing"
+	))
+
+	drivers.append(Driver.new(
+		"Carlos Sainzio",
+		83, 80, 90, 73, 88, 67, 85,
+		"Red Falcon"
+	))
+
+	drivers.append(Driver.new(
+		"Valteri Bottazzi",
+		78, 79, 82, 70, 80, 54, 77,
+		"Silver Arrow"
+	))
+
+	drivers.append(Driver.new(
+		"Yuki Tsunodda",
+		80, 84, 68, 77, 72, 86, 76,
+		"Energy Bull"
+	))
+
+	player = drivers[0]
+
+
+# ------------------------------------------------------------
+# UI
+# ------------------------------------------------------------
+
+func build_ui():
+
+	var background = ColorRect.new()
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.color = Color("#101216")
+	add_child(background)
+
+	var margin = MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 25)
+	margin.add_theme_constant_override("margin_right", 25)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	add_child(margin)
+
+	var main = VBoxContainer.new()
+	main.add_theme_constant_override("separation", 10)
+	margin.add_child(main)
+
+	title_label = Label.new()
+	title_label.text = "PADDOCK // BETA"
+	title_label.add_theme_font_size_override("font_size", 28)
+	main.add_child(title_label)
+
+	var header = HBoxContainer.new()
+	header.add_theme_constant_override("separation", 30)
+	main.add_child(header)
+
+	lap_label = Label.new()
+	header.add_child(lap_label)
+
+	position_label = Label.new()
+	header.add_child(position_label)
+
+	weather_label = Label.new()
+	header.add_child(weather_label)
+
+	var separator = HSeparator.new()
+	main.add_child(separator)
+
+	var middle = HBoxContainer.new()
+	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	middle.add_theme_constant_override("separation", 15)
+	main.add_child(middle)
+
+	# --------------------------------------------------------
+	# LEFT
+	# --------------------------------------------------------
+
+	var left = VBoxContainer.new()
+	left.custom_minimum_size.x = 280
+	middle.add_child(left)
+
+	var standings_title = Label.new()
+	standings_title.text = "CLASIFICACIÓN"
+	standings_title.add_theme_font_size_override("font_size", 20)
+	left.add_child(standings_title)
+
+	standings_label = Label.new()
+	standings_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left.add_child(standings_label)
+
+	# --------------------------------------------------------
+	# CENTER
+	# --------------------------------------------------------
+
+	var center = VBoxContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	middle.add_child(center)
+
+	var telemetry_title = Label.new()
+	telemetry_title.text = "TELEMETRÍA"
+	telemetry_title.add_theme_font_size_override("font_size", 20)
+	center.add_child(telemetry_title)
+
+	telemetry_label = Label.new()
+	telemetry_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center.add_child(telemetry_label)
+
+	event_label = Label.new()
+	event_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	event_label.add_theme_font_size_override("font_size", 18)
+	center.add_child(event_label)
+
+	radio_label = Label.new()
+	radio_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	center.add_child(radio_label)
+
+	# --------------------------------------------------------
+	# RIGHT
+	# --------------------------------------------------------
+
+	var right = VBoxContainer.new()
+	right.custom_minimum_size.x = 220
+	middle.add_child(right)
+
+	var strategy_title = Label.new()
+	strategy_title.text = "ESTRATEGIA"
+	strategy_title.add_theme_font_size_override("font_size", 20)
+	right.add_child(strategy_title)
+
+	push_button = make_button("🔥 PUSH")
+	normal_button = make_button("⚖ NORMAL")
+	save_button = make_button("🧊 SAVE")
+	attack_button = make_button("⚔ ATTACK")
+	defend_button = make_button("🛡 DEFEND")
+	pit_button = make_button("🔧 BOX")
+
+	right.add_child(push_button)
+	right.add_child(normal_button)
+	right.add_child(save_button)
+	right.add_child(attack_button)
+	right.add_child(defend_button)
+	right.add_child(pit_button)
+
+	push_button.pressed.connect(func(): set_strategy("PUSH"))
+	normal_button.pressed.connect(func(): set_strategy("NORMAL"))
+	save_button.pressed.connect(func(): set_strategy("SAVE"))
+
+	attack_button.pressed.connect(attack)
+	defend_button.pressed.connect(defend)
+	pit_button.pressed.connect(pit)
+
+	var bottom_separator = HSeparator.new()
+	main.add_child(bottom_separator)
+
+	championship_label = Label.new()
+	main.add_child(championship_label)
+
+	log_label = RichTextLabel.new()
+	log_label.custom_minimum_size.y = 120
+	log_label.bbcode_enabled = true
+	main.add_child(log_label)
+
+	var controls = HBoxContainer.new()
+	main.add_child(controls)
+
+	start_button = make_button("▶ INICIAR")
+	next_lap_button = make_button("⏩ SIGUIENTE VUELTA")
+	restart_button = make_button("↻ NUEVA CARRERA")
+
+	controls.add_child(start_button)
+	controls.add_child(next_lap_button)
+	controls.add_child(restart_button)
+
+	start_button.pressed.connect(start_race)
+	next_lap_button.pressed.connect(simulate_next_lap)
+	restart_button.pressed.connect(start_new_race)
+
+
+func make_button(text: String) -> Button:
+
+	var button = Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(150, 40)
+
+	return button
+
+
+# ------------------------------------------------------------
+# NEW RACE
+# ------------------------------------------------------------
+
+func start_new_race():
+
+	current_lap = 0
+
+	race_running = false
+	race_finished = false
+
+	safety_car = false
+	virtual_safety_car = false
+	red_flag = false
+
+	rain_intensity = 0.0
+	track_wetness = 0.0
+
+	last_event = ""
+	radio_message = "Formation lap complete. Get ready."
+
+	event_cooldown = 0
+
+	race_states.clear()
+
+	for driver in drivers:
+		var state = RaceState.new(driver)
+
+		state.tire_type = choose_starting_tire()
+
+		race_states.append(state)
+
+	player_state = race_states[0]
+
+	update_ui()
+
+
+func choose_starting_tire() -> String:
+
+	var roll = rng.randf()
+
+	if roll < 0.35:
+		return "SOFT"
+
+	elif roll < 0.85:
+		return "MEDIUM"
+
+	return "HARD"
+
+
+# ------------------------------------------------------------
+# START
+# ------------------------------------------------------------
+
+func start_race():
+
+	if race_finished:
+		return
+
+	race_running = true
+
+	radio_message = "Lights out! Lights out!"
+
+	add_log("🏁 [b]¡SE APAGAN LAS LUCES![/b]")
+
+	simulate_next_lap()
+
+
+# ------------------------------------------------------------
+# LAP
+# ------------------------------------------------------------
+
+func simulate_next_lap():
+
+	if not race_running:
+		return
+
+	if race_finished:
+		return
+
+	current_lap += 1
+
+	update_weather()
+
+	process_race_control()
+
+	for state in race_states:
+
+		if not state.alive:
+			continue
+
+		simulate_driver(state)
+
+	calculate_positions()
+
+	process_random_events()
+
+	event_cooldown = max(0, event_cooldown - 1)
+
+	if current_lap >= total_laps:
+		finish_race()
+	else:
+		update_ui()
+
+
+# ------------------------------------------------------------
+# DRIVER SIMULATION
+# ------------------------------------------------------------
+
+func simulate_driver(state: RaceState):
+
+	if state.dnf:
+		return
+
+	var driver = state.driver
+
+	# -----------------------------------------
+	# BASE PERFORMANCE
+	# -----------------------------------------
+
+	var performance = float(driver.pace)
+
+	performance += float(driver.consistency) * 0.15
+
+	performance += rng.randf_range(-4.0, 4.0)
+
+	# -----------------------------------------
+	# TIRES
+	# -----------------------------------------
+
+	var tire_multiplier = 1.0
+
+	match state.tire_type:
+
+		"SOFT":
+			tire_multiplier = 1.10
+
+		"MEDIUM":
+			tire_multiplier = 1.00
+
+		"HARD":
+			tire_multiplier = 0.94
+
+		"INTERMEDIATE":
+			if track_wetness > 0.25:
+				tire_multiplier = 1.10
+			else:
+				tire_multiplier = 0.80
+
+		"WET":
+			if track_wetness > 0.60:
+				tire_multiplier = 1.08
+			else:
+				tire_multiplier = 0.65
+
+	# -----------------------------------------
+	# STRATEGY
+	# -----------------------------------------
+
+	if state.strategy == "PUSH":
+
+		performance += 7
+		state.tire_health -= 3.2
+
+	elif state.strategy == "SAVE":
+
+		performance -= 5
+		state.tire_health -= 1.1
+
+	else:
+
+		performance += 0
+		state.tire_health -= 2.0
+
+	performance *= tire_multiplier
+
+	# -----------------------------------------
+	# WEATHER
+	# -----------------------------------------
+
+	if track_wetness > 0.35:
+
+		if state.tire_type == "SOFT" or state.tire_type == "MEDIUM" or state.tire_type == "HARD":
+
+			performance -= track_wetness * 12
+
+		else:
+
+			performance += driver.wet_skill * 0.04
+
+	# -----------------------------------------
+	# DAMAGE
+	# -----------------------------------------
+
+	if state.front_wing < 100:
+
+		performance -= (100.0 - state.front_wing) * 0.08
+
+	# -----------------------------------------
+	# SAFETY CAR
+	# -----------------------------------------
+
+	if safety_car:
+
+		performance *= 0.55
+
+	elif virtual_safety_car:
+
+		performance *= 0.70
+
+	# -----------------------------------------
+	# PIT
+	# -----------------------------------------
+
+	if state.pitting:
+
+		state.pit_laps_left -= 1
+
+		performance *= 0.35
+
+		if state.pit_laps_left <= 0:
+
+			state.pitting = false
+
+			state.tire_health = 100.0
+
+			state.tire_type = choose_best_rain_tire()
+
+			state.pit_laps_left = 0
+
+			add_log("🔧 %s salió de boxes." % driver.name)
+
+	# -----------------------------------------
+	# FUEL
+	# -----------------------------------------
+
+	state.fuel -= 100.0 / float(total_laps)
+
+	if state.fuel < 0:
+		state.fuel = 0
+
+	if state.fuel < 15:
+
+		performance -= 4
+
+	# -----------------------------------------
+	# ERS
+	# -----------------------------------------
+
+	if state.strategy == "PUSH":
+
+		state.ers -= 5
+
+	elif state.strategy == "SAVE":
+
+		state.ers += 4
+
+	else:
+
+		state.ers -= 1
+
+	state.ers = clamp(state.ers, 0.0, 100.0)
+
+	# -----------------------------------------
+	# LAP TIME
+	# -----------------------------------------
+
+	var base_lap_time = 90.0
+
+	state.lap_time = base_lap_time - performance * 0.15
+
+	if state.lap_time < 70:
+		state.lap_time = 70
+
+	if state.lap_time > 110:
+		state.lap_time = 110
+
+	state.total_time += state.lap_time
+
+	# -----------------------------------------
+	# ENGINE
+	# -----------------------------------------
+
+	state.engine -= rng.randf_range(0.0, 0.15)
+
+	if state.engine < 20:
+
+		var failure_chance = 0.015
+
+		if rng.randf() < failure_chance:
+
+			state.dnf = true
+			state.alive = false
+
+			add_log("💥 %s tuvo una falla de motor." % driver.name)
+
+
+# ------------------------------------------------------------
+# POSITIONS
+# ------------------------------------------------------------
+
+func calculate_positions():
+
+	var active_states: Array[RaceState] = []
+
+	for state in race_states:
+
+		if not state.dnf:
+			active_states.append(state)
+
+	active_states.sort_custom(func(a, b):
+		return a.total_time < b.total_time
+	)
+
+	var position = 1
+
+	for state in active_states:
+
+		state.position = position
+
+		position += 1
+
+	for state in race_states:
+
+		if state.dnf:
+			state.position = 99
+
+
+# ------------------------------------------------------------
+# PLAYER STRATEGY
+# ------------------------------------------------------------
+
+func set_strategy(strategy: String):
+
+	if not player_state:
+		return
+
+	player_state.strategy = strategy
+
+	match strategy:
+
+		"PUSH":
+			radio_message = "Push mode. Maximum attack."
+
+		"NORMAL":
+			radio_message = "Balanced pace."
+
+		"SAVE":
+			radio_message = "Managing tires and energy."
+
+
+# ------------------------------------------------------------
+# PIT
+# ------------------------------------------------------------
+
+func pit():
+
+	if player_state.pitting:
+		return
+
+	if safety_car:
+		player_state.pit_laps_left = 1
+	else:
+		player_state.pit_laps_left = 2
+
+	player_state.pitting = true
+	player_state.pit_stops += 1
+
+	player_state.strategy = "NORMAL"
+
+	add_log("🔧 [b]TU PILOTO ENTRA A BOXES.[/b]")
+
+
+# ------------------------------------------------------------
+# ATTACK
+# ------------------------------------------------------------
+
+func attack():
+
+	if player_state.position <= 1:
+		return
+
+	var target = get_driver_ahead()
+
+	if target == null:
+		return
+
+	var chance = 0.35
+
+	chance += player.racecraft * 0.003
+	chance += player_state.ers * 0.001
+	chance += (100.0 - target.tire_health) * 0.002
+	chance += (player_state.tire_health - target.tire_health) * 0.002
+
+	if player_state.strategy == "PUSH":
+		chance += 0.08
+
+	chance = clamp(chance, 0.05, 0.90)
+
+	var roll = rng.randf()
+
+	if roll < chance * 0.08:
+
+		add_log("💥 ¡Intento de adelantamiento fallido y contacto!")
+
+		player_state.front_wing -= rng.randf_range(10, 35)
+
+	elif roll < chance:
+
+		var old_position = player_state.position
+
+		swap_positions(player_state, target)
+
+		add_log("⚔️ ¡Adelantamiento sobre %s! P%d → P%d" % [
+			target.driver.name,
+			old_position,
+			player_state.position
+		])
+
+	else:
+
+		add_log("⚔️ %s resistió el ataque." % target.driver.name)
+
+
+	player_state.ers = max(0.0, player_state.ers - 8)
+
+
+# ------------------------------------------------------------
+# DEFEND
+# ------------------------------------------------------------
+
+func defend():
+
+	player_state.strategy = "SAVE"
+
+	var target = get_driver_behind()
+
+	if target == null:
+		return
+
+	var chance = 0.50
+
+	chance += player.consistency * 0.002
+	chance += player.racecraft * 0.002
+	chance -= target.driver.racecraft * 0.001
+
+	if rng.randf() < chance:
+
+		add_log("🛡️ Defendiste tu posición contra %s." % target.driver.name)
+
+	else:
+
+		var old_position = player_state.position
+
+		swap_positions(target, player_state)
+
+		add_log("⚔️ %s consiguió pasarte." % target.driver.name)
+
+	player_state.ers = max(0.0, player_state.ers - 3)
+
+
+# ------------------------------------------------------------
+# POSITION SWAP
+# ------------------------------------------------------------
+
+func swap_positions(a: RaceState, b: RaceState):
+
+	var temp = a.position
+
+	a.position = b.position
+	b.position = temp
+
+	# Alteramos ligeramente los tiempos para mantener
+	# coherencia en la siguiente clasificación.
+	var temp_time = a.total_time
+	a.total_time = b.total_time - 0.1
+	b.total_time = temp_time + 0.1
+
+
+# ------------------------------------------------------------
+# GET DRIVER AHEAD
+# ------------------------------------------------------------
+
+func get_driver_ahead() -> RaceState:
+
+	var target_position = player_state.position - 1
+
+	for state in race_states:
+
+		if state.position == target_position and not state.dnf:
+			return state
+
+	return null
+
+
+# ------------------------------------------------------------
+# GET DRIVER BEHIND
+# ------------------------------------------------------------
+
+func get_driver_behind() -> RaceState:
+
+	var target_position = player_state.position + 1
+
+	for state in race_states:
+
+		if state.position == target_position and not state.dnf:
+			return state
+
+	return null
+
+
+# ------------------------------------------------------------
+# WEATHER
+# ------------------------------------------------------------
+
+func update_weather():
+
+	weather_forecast = rng.randf()
+
+	# La lluvia aparece progresivamente.
+	if rain_intensity <= 0:
+
+		if rng.randf() < 0.06:
+
+			rain_intensity = rng.randf_range(0.1, 0.3)
+
+			add_log("☁️ Se detecta lluvia en la zona.")
+
+	else:
+
+		if rng.randf() < 0.30:
+
+			rain_intensity += rng.randf_range(-0.12, 0.18)
+
+		rain_intensity = clamp(rain_intensity, 0.0, 1.0)
+
+	track_wetness += rain_intensity * 0.08
+
+	if rain_intensity < 0.05:
+
+		track_wetness -= 0.05
+
+	track_wetness = clamp(track_wetness, 0.0, 1.0)
+
+	if track_wetness > 0.60 and rain_intensity > 0.5:
+
+		if current_lap % 4 == 0:
+
+			add_log("🌧️ [b]¡LLUVIA FUERTE![/b]")
+
+
+# ------------------------------------------------------------
+# RACE CONTROL
+# ------------------------------------------------------------
+
+func process_race_control():
+
+	if event_cooldown > 0:
+		return
+
+	# RED FLAG
+	if rng.randf() < get_red_flag_probability():
+
+		if not red_flag and current_lap > 5 and current_lap < total_laps - 3:
+
+			red_flag = true
+			event_cooldown = 6
+
+			add_log("🚩 [b]BANDERA ROJA.[/b] Carrera detenida.")
+
+			await get_tree().create_timer(1.0).timeout
+
+			red_flag = false
+
+			add_log("🟢 Carrera reiniciada.")
+
+			return
+
+	# SAFETY CAR
+	if rng.randf() < get_safety_car_probability():
+
+		if not safety_car and not virtual_safety_car:
+
+			safety_car = true
+			event_cooldown = 5
+
+			add_log("🚨 [b]SAFETY CAR.[/b]")
+
+			radio_message = "Safety Car deployed."
+
+			return
+
+	# VSC
+	if rng.randf() < 0.015:
+
+		if not safety_car and not virtual_safety_car:
+
+			virtual_safety_car = true
+			event_cooldown = 3
+
+			add_log("🟡 [b]VIRTUAL SAFETY CAR.[/b]")
+
+			return
+
+	# Liberar SC
+	if safety_car and rng.randf() < 0.35:
+
+		safety_car = false
+
+		add_log("🟢 Safety Car ending. Prepare for restart.")
+
+	# Liberar VSC
+	if virtual_safety_car and rng.randf() < 0.45:
+
+		virtual_safety_car = false
+
+		add_log("🟢 VSC ending.")
+
+
+# ------------------------------------------------------------
+# PROBABILITIES
+# ------------------------------------------------------------
+
+func get_safety_car_probability() -> float:
+
+	var probability = 0.015
+
+	# Lluvia aumenta incidentes.
+	probability += rain_intensity * 0.045
+
+	# Pista mojada.
+	probability += track_wetness * 0.025
+
+	# Circuito urbano hipotético.
+	if rng.randf() < 0.05:
+		probability += 0.01
+
+	# Nunca demasiado alta.
+	return clamp(probability, 0.005, 0.12)
+
+
+func get_red_flag_probability() -> float:
+
+	var probability = 0.001
+
+	probability += rain_intensity * 0.006
+
+	if current_lap > 10:
+		probability += 0.001
+
+	return clamp(probability, 0.0005, 0.02)
+
+
+# ------------------------------------------------------------
+# RANDOM EVENTS
+# ------------------------------------------------------------
+
+func process_random_events():
+
+	if event_cooldown > 0:
+		return
+
+	var roll = rng.randf()
+
+	# ERROR DEL JUGADOR
+	if roll < get_driver_error_probability():
+
+		player_error()
+
+		return
+
+	# DAÑO
+	if roll < 0.08:
+
+		if rng.randf() < 0.20:
+
+			player_state.front_wing -= rng.randf_range(5, 20)
+
+			player_state.front_wing = max(
+				player_state.front_wing,
+				0
+			)
+
+			add_log("⚠️ Contacto. Daño en el ala delantera.")
+
+			return
+
+	# PINCHAZO
+	if roll > 0.94:
+
+		if player_state.tire_health < 20:
+
+			add_log("💥 ¡PINCHAZO!")
+
+			pit()
+
+			return
+
+
+func get_driver_error_probability() -> float:
+
+	var chance = 0.005
+
+	chance += player.aggression * 0.0007
+
+	chance -= player.consistency * 0.0003
+
+	if player_state.strategy == "PUSH":
+		chance += 0.012
+
+	if rain_intensity > 0.5:
+		chance += 0.012
+
+	return clamp(chance, 0.002, 0.08)
+
+
+func player_error():
+
+	var severity = rng.randf()
+
+	if severity < 0.60:
+
+		player_state.lap_time += 3
+
+		add_log("⚠️ Bloqueaste neumáticos. +3 segundos.")
+
+	elif severity < 0.90:
+
+		player_state.lap_time += 6
+
+		player_state.front_wing -= 8
+
+		add_log("⚠️ Error de conducción. Daño leve.")
+
+	else:
+
+		player_state.front_wing -= 35
+
+		add_log("💥 ¡Salida de pista! Daño importante.")
+
+
+# ------------------------------------------------------------
+# TIRE CHOICE
+# ------------------------------------------------------------
+
+func choose_best_rain_tire() -> String:
+
+	if track_wetness > 0.70:
+		return "WET"
+
+	if track_wetness > 0.25:
+		return "INTERMEDIATE"
+
+	if rng.randf() < 0.4:
+		return "SOFT"
+
+	return "MEDIUM"
+
+
+# ------------------------------------------------------------
+# FINISH
+# ------------------------------------------------------------
+
+func finish_race():
+
+	race_running = false
+	race_finished = true
+	career_races += 1
+
+	calculate_positions()
+
+	var position = player_state.position
+
+	var gained_points = 0
+
+	match position:
+
+		1:
+			gained_points = 25
+			wins += 1
+			podiums += 1
+
+		2:
+			gained_points = 18
+			podiums += 1
+
+		3:
+			gained_points = 15
+			podiums += 1
+
+		4:
+			gained_points = 12
+
+		5:
+			gained_points = 10
+
+		6:
+			gained_points = 8
+
+		7:
+			gained_points = 6
+
+		8:
+			gained_points = 4
+
+		9:
+			gained_points = 2
+
+		10:
+			gained_points = 1
+
+	player_points += gained_points
+
+	var prize = max(5000, 50000 - (position * 3000))
+
+	player_money += prize
+
+	player_reputation += max(1, 11 - position)
+
+	if position == 1:
+
+		add_log("🏆 [b]¡VICTORIA![/b]")
+		add_log("Ganaste $%d y %d puntos." % [prize, gained_points])
+
+	elif position <= 3:
+
+		add_log("🥇 [b]¡PODIO! P%d[/b]" % position)
+
+	else:
+
+		add_log("🏁 Terminaste P%d." % position)
+
+	radio_message = "Chequered flag. Great job."
+
+	update_ui()
+
+
+# ------------------------------------------------------------
+# UI UPDATE
+# ------------------------------------------------------------
+
+func update_ui():
+
+	if not player_state:
+		return
+
+	lap_label.text = "VUELTA %d / %d" % [
+		current_lap,
+		total_laps
+	]
+
+	position_label.text = "POSICIÓN: P%d" % player_state.position
+
+	weather_label.text = get_weather_text()
+
+	update_standings()
+	update_telemetry()
+
+	radio_label.text = "📻 RADIO\n" + radio_message
+
+	event_label.text = last_event
+
+	championship_label.text = (
+		"🏆 CAMPEONATO: %d pts     " %
+		player_points
+		+
+		"💰 $%d     " %
+		player_money
+		+
+		"⭐ REP: %d" %
+		player_reputation
+	)
+
+
+# ------------------------------------------------------------
+# STANDINGS UI
+# ------------------------------------------------------------
+
+func update_standings():
+
+	var text = ""
+
+	var sorted_states = race_states.duplicate()
+
+	sorted_states.sort_custom(func(a, b):
+		return a.position < b.position
+	)
+
+	for state in sorted_states:
+
+		if state.dnf:
+
+			text += "DNF  %s\n" % state.driver.name
+
+		else:
+
+			var marker = ""
+
+			if state == player_state:
+				marker = " ◀"
+
+			text += "%02d  %-20s%s\n" % [
+				state.position,
+				state.driver.name,
+				marker
+			]
+
+	standings_label.text = text
+
+
+# ------------------------------------------------------------
+# TELEMETRY
+# ------------------------------------------------------------
+
+func update_telemetry():
+
+	var tire_bar = make_bar(player_state.tire_health)
+	var fuel_bar = make_bar(player_state.fuel)
+	var ers_bar = make_bar(player_state.ers)
+	var wing_bar = make_bar(player_state.front_wing)
+	var engine_bar = make_bar(player_state.engine)
+
+	var text = ""
+
+	text += "PILOTO: %s\n\n" % player.name
+
+	text += "NEUMÁTICO: %s\n" % player_state.tire_type
+	text += "%s %.0f%%\n\n" % [tire_bar, player_state.tire_health]
+
+	text += "COMBUSTIBLE\n"
+	text += "%s %.0f%%\n\n" % [fuel_bar, player_state.fuel]
+
+	text += "ERS\n"
+	text += "%s %.0f%%\n\n" % [ers_bar, player_state.ers]
+
+	text += "ALA DELANTERA\n"
+	text += "%s %.0f%%\n\n" % [wing_bar, player_state.front_wing]
+
+	text += "MOTOR\n"
+	text += "%s %.0f%%\n\n" % [engine_bar, player_state.engine]
+
+	text += "ESTRATEGIA: %s\n" % player_state.strategy
+
+	if player_state.pitting:
+		text += "\n🔧 PIT STOP EN CURSO\n"
+
+	telemetry_label.text = text
+
+
+func make_bar(value: float) -> String:
+
+	var result = ""
+
+	var total = 12
+	var filled = int((value / 100.0) * total)
+
+	for i in range(total):
+
+		if i < filled:
+			result += "█"
+		else:
+			result += "░"
+
+	return result
+
+
+# ------------------------------------------------------------
+# WEATHER UI
+# ------------------------------------------------------------
+
+func get_weather_text() -> String:
+
+	var condition = "☀️ SECO"
+
+	if rain_intensity > 0.05:
+		condition = "🌧️ LLUVIA"
+
+	if rain_intensity > 0.55:
+		condition = "⛈️ LLUVIA FUERTE"
+
+	return "%s  |  Pista %.0f%% mojada" % [
+		condition,
+		track_wetness * 100
+	]
+
+
+# ------------------------------------------------------------
+# LOG
+# ------------------------------------------------------------
+
+func add_log(message: String):
+
+	log_label.append_text(message + "\n")
+
+	# Limitar cantidad de líneas.
+	var lines = log_label.get_parsed_text().split("\n")
+
+	if lines.size() > 15:
+
+		log_label.clear()
+
+		for i in range(max(0, lines.size() - 15), lines.size()):
+
+			if lines[i] != "":
+				log_label.append_text(lines[i] + "\n")
+
+	last_event = message
+
+
+# ------------------------------------------------------------
+# DEBUG COMMANDS
+# ------------------------------------------------------------
+
+func _input(event):
+
+	if event is InputEventKey and event.pressed:
+
+		# F1 = Safety Car
+		if event.keycode == KEY_F1:
+
+			safety_car = true
+			add_log("🚨 DEBUG: SAFETY CAR FORZADO")
+			update_ui()
+
+		# F2 = lluvia
+		elif event.keycode == KEY_F2:
+
+			rain_intensity = 0.8
+			track_wetness = 0.7
+
+			add_log("🌧️ DEBUG: LLUVIA FUERTE FORZADA")
+			update_ui()
+
+		# F3 = red flag
+		elif event.keycode == KEY_F3:
+
+			red_flag = true
+			add_log("🚩 DEBUG: BANDERA ROJA FORZADA")
+			update_ui()
+
+		# F4 = desgaste
+		elif event.keycode == KEY_F4:
+
+			player_state.tire_health = 10
+
+			add_log("🛞 DEBUG: NEUMÁTICOS AL 10%")
+			update_ui()
